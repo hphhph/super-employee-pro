@@ -1,0 +1,1126 @@
+// ============================================================
+// AI超级员工系统 - Prisma 数据库 Schema
+// 基于源码逆向分析的真实 API 端点和 UI 元素反推
+// 数据库: MySQL 8.0
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 1. 认证与权限
+// ============================================================
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique @db.VarChar(50)
+  password     String    @db.VarChar(255)
+  phone        String?   @db.VarChar(20)
+  email        String?   @db.VarChar(100)
+  avatar       String?   @db.VarChar(500)
+  nickname     String?   @db.VarChar(50)
+  role         String    @default("user") @db.VarChar(20) // admin | manager | user
+  departmentId Int?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  status       Int       @default(1) // 0=禁用 1=启用
+  lastLoginAt  DateTime?
+  lastLoginIp  String?   @db.VarChar(50)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  chatSessions   ChatSession[]
+  computeLogs    ComputeLog[]
+  operationLogs  OperationLog[]
+  aiImages       AiImage[]
+  aiVideos       AiVideo[]
+  legalConsults  LegalConsultation[]
+  contracts      Contract[]
+
+  @@map("users")
+}
+
+model Department {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(100)
+  parentId  Int?      @default(0)
+  sort      Int       @default(0)
+  leader    String?   @db.VarChar(50)
+  phone     String?   @db.VarChar(20)
+  status    Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  users     User[]
+
+  @@map("departments")
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(50)
+  code        String   @unique @db.VarChar(50)
+  permissions Json     // 权限树 JSON
+  status      Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("roles")
+}
+
+// ============================================================
+// 2. 系统配置与 API Key 管理
+// ============================================================
+
+model SystemConfig {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique @db.VarChar(100)
+  value       String   @db.Text
+  type        String   @default("string") @db.VarChar(20) // string|number|boolean|json
+  group       String   @default("system") @db.VarChar(50) // system|ai|platform|storage
+  description String?  @db.VarChar(500)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_configs")
+}
+
+/// API Key 配置中心 - 用户在系统设置页面填入各平台密钥
+model ApiKeyConfig {
+  id          Int      @id @default(autoincrement())
+  platform    String   @unique @db.VarChar(50) // deepseek|coze|openai|google_veo|seedance|aliyun_tts|dashscope|wecom|douyin|xiaohongshu|kuaishou|wechat_channels|boss|zhilian
+  name        String   @db.VarChar(100) // 显示名称
+  apiKey      String?  @db.VarChar(500) // 主密钥
+  apiSecret   String?  @db.VarChar(500) // 辅助密钥
+  extraConfig Json?    // 额外配置 (appId, agentId, model 等)
+  baseUrl     String?  @db.VarChar(500)
+  status      Int      @default(0) // 0=未配置 1=已配置 2=已验证
+  lastVerifiedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("api_key_configs")
+}
+
+model ActivationCode {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique @db.VarChar(100)
+  type      String    @default("standard") @db.VarChar(50) // standard|premium|trial
+  deviceId  String?   @db.VarChar(100)
+  status    Int       @default(0) // 0=未使用 1=已使用 2=已过期
+  expiresAt DateTime?
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("activation_codes")
+}
+
+model OperationLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  action    String   @db.VarChar(100)
+  module    String   @db.VarChar(50)
+  method    String   @db.VarChar(10)
+  ip        String?  @db.VarChar(50)
+  userAgent String?  @db.VarChar(500)
+  params    String?  @db.Text
+  result    String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("operation_logs")
+}
+
+// ============================================================
+// 3. 算力管理
+// ============================================================
+
+model ComputeQuota {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  total     Int      @default(1000) // 总配额
+  used      Int      @default(0) // 已使用
+  frozen    Int      @default(0) // 冻结中
+  resetAt   DateTime? // 重置时间
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("compute_quotas")
+}
+
+model ComputeLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  type      String   @db.VarChar(30) // chat|image|video|tts|digital_human|sora
+  cost      Int      @default(1)
+  detail    String?  @db.Text // 详细信息
+  status    String   @default("success") @db.VarChar(20) // success|failed
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("compute_logs")
+}
+
+// ============================================================
+// 4. AI 对话
+// ============================================================
+
+model ChatSession {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id])
+  title     String    @default("新对话") @db.VarChar(200)
+  model     String    @default("deepseek-chat") @db.VarChar(50)
+  agentId   Int?
+  agent     AiAgent?  @relation(fields: [agentId], references: [id])
+  pinned    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  messages  ChatMessage[]
+
+  @@index([userId])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  sessionId Int
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String   @db.VarChar(20) // user|assistant|system
+  content   String   @db.LongText
+  tokens    Int      @default(0)
+  model     String?  @db.VarChar(50)
+  images    Json?    // 附带图片
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@map("chat_messages")
+}
+
+// ============================================================
+// 5. 企业微信 SCRM
+// ============================================================
+
+model WecomDevice {
+  id           Int       @id @default(autoincrement())
+  deviceId     String    @unique @db.VarChar(100)
+  name         String?   @db.VarChar(100)
+  status       Int       @default(0) // 0=离线 1=在线
+  lastActiveAt DateTime?
+  info         Json?     // 设备信息
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  fans         WecomFan[]
+  sessions     WecomSession[]
+
+  @@map("wecom_devices")
+}
+
+model WecomFan {
+  id            Int      @id @default(autoincrement())
+  externalUserId String  @db.VarChar(100) // 企微外部联系人ID
+  name          String?  @db.VarChar(100)
+  avatar        String?  @db.VarChar(500)
+  unionId       String?  @db.VarChar(100)
+  openId        String?  @db.VarChar(100)
+  type          Int      @default(0) // 0=微信用户 1=企业微信用户
+  corpId        String?  @db.VarChar(100)
+  corpName      String?  @db.VarChar(100)
+  gender        Int      @default(0) // 0=未知 1=男 2=女
+  remark        String?  @db.VarChar(200)
+  tags          Json?    // 标签数组
+  labels        Json?    // 自定义标签
+  source        String?  @db.VarChar(100) // 来源
+  status        Int      @default(1) // 0=已删除 1=正常
+  deviceId      Int?
+  device        WecomDevice? @relation(fields: [deviceId], references: [id])
+  friendAt      DateTime?
+  lastChatAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions      WecomSession[]
+  messages      WecomMessage[]
+
+  @@index([externalUserId])
+  @@map("wecom_fans")
+}
+
+model WecomLabel {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(50)
+  color     String   @default("#409EFF") @db.VarChar(20)
+  fanCount  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("wecom_labels")
+}
+
+model WecomKeyword {
+  id          Int      @id @default(autoincrement())
+  keyword     String   @db.VarChar(200)
+  replyType   String   @default("text") @db.VarChar(20) // text|image|link|file|miniprogram
+  replyContent String  @db.Text
+  matchType   String   @default("exact") @db.VarChar(20) // exact|contains|fuzzy
+  priority    Int      @default(0)
+  status      Int      @default(1) // 0=禁用 1=启用
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wecom_keywords")
+}
+
+model WecomSession {
+  id            Int      @id @default(autoincrement())
+  externalUserId Int     // 关联 WecomFan
+  fan           WecomFan @relation(fields: [externalUserId], references: [id])
+  deviceId      Int?
+  device        WecomDevice? @relation(fields: [deviceId], references: [id])
+  unreadCount   Int      @default(0)
+  lastMessage   String?  @db.VarChar(500)
+  lastMessageAt DateTime?
+  pinned        Boolean  @default(false)
+  muted         Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  messages      WecomMessage[]
+
+  @@index([externalUserId])
+  @@map("wecom_sessions")
+}
+
+model WecomMessage {
+  id        Int      @id @default(autoincrement())
+  sessionId Int
+  session   WecomSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fanId     Int
+  fan       WecomFan  @relation(fields: [fanId], references: [id])
+  direction String   @default("in") @db.VarChar(10) // in|out
+  type      String   @db.VarChar(20) // text|image|file|link|video|voice|miniprogram
+  content   String   @db.LongText
+  extra     Json?    // 附加信息(文件名/图片尺寸等)
+  isRead    Boolean  @default(false)
+  createdBy String   @default("ai") @db.VarChar(20) // ai|human|system
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([fanId])
+  @@map("wecom_messages")
+}
+
+model WecomBulkTask {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(200)
+  targetType  String   @db.VarChar(20) // all|label|custom|department
+  target      Json?    // 目标粉丝ID列表或标签
+  contentType String   @default("text") @db.VarChar(20) // text|image|link|file|miniprogram
+  content     String   @db.LongText
+  status      String   @default("pending") @db.VarChar(20) // pending|running|completed|failed|cancelled
+  total       Int      @default(0) // 总发送数
+  sent        Int      @default(0) // 已发送
+  failed      Int      @default(0) // 失败数
+  scheduledAt DateTime? // 定时发送
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wecom_bulk_tasks")
+}
+
+model WecomSopTask {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(200)
+  steps       Json     // SOP步骤 [{day:1, time:"10:00", content:"...", type:"text"}]
+  targetType  String   @db.VarChar(20) // all|label|custom|new_fan
+  target      Json?    // 目标配置
+  trigger     String   @default("add_fan") @db.VarChar(30) // add_fan|label_change|custom
+  status      String   @default("active") @db.VarChar(20) // active|paused|completed
+  total       Int      @default(0)
+  executed    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wecom_sop_tasks")
+}
+
+model WecomFriendTask {
+  id          Int      @id @default(autoincrement())
+  type        String   @db.VarChar(30) // auto_greet|auto_reply|auto_label
+  name        String   @db.VarChar(200)
+  target      Json?    // 目标配置
+  content     String   @db.LongText
+  condition   Json?    // 触发条件
+  status      String   @default("active") @db.VarChar(20)
+  total       Int      @default(0)
+  executed    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wecom_friend_tasks")
+}
+
+model WecomMomentTask {
+  id          Int      @id @default(autoincrement())
+  type        String   @db.VarChar(20) // sop|auto
+  name        String   @db.VarChar(200)
+  content     String   @db.LongText
+  images      Json?    // 图片URL列表
+  targetType  String   @db.VarChar(20)
+  target      Json?
+  scheduledAt DateTime?
+  status      String   @default("pending") @db.VarChar(20)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wecom_moment_tasks")
+}
+
+model WecomAutoInteraction {
+  id          Int      @id @default(autoincrement())
+  type        String   @db.VarChar(20) // like|comment|like_comment
+  targetType  String   @db.VarChar(20)
+  target      Json?
+  commentTemplates Json? // 评论模板列表
+  likeProbability Float  @default(0.3) // 点赞概率
+  commentProbability Float @default(0.2) // 评论概率
+  delayMin    Int      @default(5) // 最小延迟(秒)
+  delayMax    Int      @default(30) // 最大延迟(秒)
+  status      String   @default("active") @db.VarChar(20)
+  total       Int      @default(0)
+  executed    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wecom_auto_interactions")
+}
+
+// ============================================================
+// 6. 企业智库 / 知识库 / 智能体
+// ============================================================
+
+model KnowledgeBase {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(200)
+  description String?  @db.Text
+  type        String   @default("general") @db.VarChar(50) // general|sales|product|faq|script
+  documentCount Int    @default(0)
+  status      Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  documents   KnowledgeDocument[]
+  agents      AgentKnowledgeBase[]
+
+  @@map("knowledge_bases")
+}
+
+model KnowledgeCategory {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  parentId  Int?     @default(0)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("knowledge_categories")
+}
+
+model KnowledgeDocument {
+  id              Int      @id @default(autoincrement())
+  knowledgeBaseId Int
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  title           String   @db.VarChar(500)
+  content         String   @db.LongText
+  type            String   @default("text") @db.VarChar(20) // text|pdf|doc|url|faq
+  size            Int      @default(0) // 文件大小(字节)
+  url             String?  @db.VarChar(500) // 原始文件URL
+  chunks          Int      @default(0) // 分块数
+  status          String   @default("ready") @db.VarChar(20) // processing|ready|failed
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([knowledgeBaseId])
+  @@map("knowledge_documents")
+}
+
+model AiAgent {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(200)
+  description   String?  @db.Text
+  avatar        String?  @db.VarChar(500)
+  botId         String?  @db.VarChar(100) // Coze Bot ID
+  model         String   @default("deepseek-chat") @db.VarChar(50)
+  systemPrompt   String?  @db.LongText
+  temperature   Float    @default(0.7)
+  maxTokens     Int      @default(2048)
+  topP          Float    @default(0.9)
+  status        Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  knowledgeBases AgentKnowledgeBase[]
+  chatSessions   ChatSession[]
+
+  @@map("ai_agents")
+}
+
+model AgentKnowledgeBase {
+  agentId         Int
+  knowledgeBaseId Int
+  agent            AiAgent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, knowledgeBaseId])
+  @@map("agent_knowledge_bases")
+}
+
+// ============================================================
+// 7. AI 创作模块 (Sora/视频/图片生成)
+// ============================================================
+
+model AiImage {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  prompt    String   @db.Text
+  negativePrompt String? @db.Text
+  url       String?  @db.VarChar(500)
+  thumbnail String?  @db.VarChar(500)
+  model     String   @db.VarChar(50) // sora-2|dall-e|stable-diffusion
+  size      String   @default("1024x1024") @db.VarChar(30)
+  status    String   @default("pending") @db.VarChar(20) // pending|processing|completed|failed
+  error     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("ai_images")
+}
+
+model AiVideo {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  prompt    String   @db.Text
+  url       String?  @db.VarChar(500)
+  thumbnail String?  @db.VarChar(500)
+  model     String   @db.VarChar(50) // sora-2|veo-3|seedance
+  duration  Int?     // 视频时长(秒)
+  resolution String? @db.VarChar(20) // 720p|1080p|4k
+  status    String   @default("pending") @db.VarChar(20)
+  error     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("ai_videos")
+}
+
+// ============================================================
+// 8. 数字人模块
+// ============================================================
+
+model VoiceModel {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  voiceId   String?  @db.VarChar(100) // 阿里TTS voiceId
+  provider  String   @default("aliyun") @db.VarChar(30) // aliyun|elevenlabs
+  sampleUrl String?  @db.VarChar(500) // 音频样本
+  language  String   @default("zh") @db.VarChar(10)
+  status    Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  digitalVideos DigitalVideo[]
+
+  @@map("voice_models")
+}
+
+model DigitalHuman {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  imageUrl  String?  @db.VarChar(500) // 形象图片
+  videoUrl  String?  @db.VarChar(500) // 驱动视频
+  provider  String   @db.VarChar(50) // 提供商
+  status    Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  digitalVideos DigitalVideo[]
+
+  @@map("digital_humans")
+}
+
+model DigitalVideo {
+  id              Int      @id @default(autoincrement())
+  title           String   @db.VarChar(200)
+  url             String?  @db.VarChar(500)
+  thumbnail       String?  @db.VarChar(500)
+  duration        Int?
+  voiceModelId    Int?
+  voiceModel      VoiceModel? @relation(fields: [voiceModelId], references: [id])
+  digitalHumanId  Int?
+  digitalHuman    DigitalHuman? @relation(fields: [digitalHumanId], references: [id])
+  script          String?  @db.LongText // 脚本/文案
+  status          String   @default("pending") @db.VarChar(20)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("digital_videos")
+}
+
+// ============================================================
+// 9. 短视频矩阵
+// ============================================================
+
+model MatrixAccount {
+  id        Int      @id @default(autoincrement())
+  platform  String   @db.VarChar(20) // douyin|xiaohongshu|kuaishou|wechat_channels
+  accountId String   @db.VarChar(100)
+  nickname  String?  @db.VarChar(100)
+  avatar    String?  @db.VarChar(500)
+  fans      Int      @default(0)
+  status    Int      @default(1) // 0=异常 1=正常
+  token     String?  @db.VarChar(500) // OAuth token
+  refreshToken String? @db.VarChar(500)
+  tokenExpiresAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([platform])
+  @@map("matrix_accounts")
+}
+
+model MatrixVideo {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(500)
+  url         String?  @db.VarChar(500)
+  thumbnail   String?  @db.VarChar(500)
+  duration    Int?
+  description String?  @db.Text
+  tags        Json?    // 标签列表
+  status      String   @default("draft") @db.VarChar(20) // draft|published|scheduled|failed
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tasks MatrixTask[]
+
+  @@map("matrix_videos")
+}
+
+model MatrixMaterial {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(200)
+  type      String   @db.VarChar(20) // video|image|audio|text
+  url       String   @db.VarChar(500)
+  size      Int      @default(0)
+  duration  Int?     // 视频/音频时长
+  tags      Json?    // 标签
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("matrix_materials")
+}
+
+model MatrixTask {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(200)
+  type        String   @db.VarChar(30) // publish|schedule|batch_publish
+  accountIds  Json     // 目标账号ID列表
+  videoId     Int?
+  video       MatrixVideo? @relation(fields: [videoId], references: [id])
+  scheduledAt DateTime?
+  status      String   @default("pending") @db.VarChar(20)
+  total       Int      @default(0)
+  success     Int      @default(0)
+  failed      Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("matrix_tasks")
+}
+
+// ============================================================
+// 9.5 AI 视频扩展：数字人口播 / 文案大师 / 同行监控
+// ============================================================
+
+/// 数字人形象（图片或短视频，本地合成口播视频）
+model DigitalHumanAvatar {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  type      String   @default("image") @db.VarChar(10) // image|video
+  fileUrl   String   @db.VarChar(500) // 原始文件（图片或视频）
+  remark    String?  @db.VarChar(500)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks DigitalHumanTask[]
+
+  @@map("digital_human_avatars")
+}
+
+/// 数字人口播任务
+model DigitalHumanTask {
+  id               Int      @id @default(autoincrement())
+  title            String   @db.VarChar(200)
+  avatarId         Int
+  avatar           DigitalHumanAvatar @relation(fields: [avatarId], references: [id])
+  script           String   @db.LongText
+  voiceName        String   @db.VarChar(100)
+  aspect           String   @default("9:16") @db.VarChar(10) // 9:16|16:9|1:1
+  subtitleEnabled  Boolean  @default(true)
+  bgmEnabled       Boolean  @default(false)
+  status           String   @default("pending") @db.VarChar(20) // pending|processing|completed|failed
+  progress         Int      @default(0)
+  videoUrl         String?  @db.VarChar(500) // 相对路径 /digital-human/files/{id}/{file}
+  duration         Int?     // 成片时长(秒)
+  error            String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([status])
+  @@map("digital_human_tasks")
+}
+
+/// 同行账号（竞品监控）
+model CompetitorAccount {
+  id        Int      @id @default(autoincrement())
+  platform  String   @db.VarChar(20) // douyin|xiaohongshu|kuaishou|wechat_channels|bilibili
+  name      String   @db.VarChar(100)
+  url       String?  @db.VarChar(500)
+  fans      Int      @default(0)
+  remark    String?  @db.VarChar(500)
+  status    Int      @default(1) // 0=停用 1=监控中
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  works CompetitorWork[]
+
+  @@index([platform])
+  @@map("competitor_accounts")
+}
+
+/// 同行作品数据
+model CompetitorWork {
+  id          Int      @id @default(autoincrement())
+  accountId   Int
+  account     CompetitorAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  title       String   @db.VarChar(500)
+  url         String?  @db.VarChar(500)
+  coverUrl    String?  @db.VarChar(500)
+  likes       Int      @default(0)
+  comments    Int      @default(0)
+  shares      Int      @default(0)
+  views       Int      @default(0)
+  publishedAt DateTime?
+  isHot       Boolean  @default(false) // 爆款标记
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([publishedAt])
+  @@map("competitor_works")
+}
+
+/// 文案大师生成记录
+model CopywritingRecord {
+  id        Int      @id @default(autoincrement())
+  scenario  String   @db.VarChar(50) // 带货|口播|探店|知识科普|剧情|种草
+  subject   String   @db.VarChar(500)
+  title     String?  @db.VarChar(500)
+  content   String   @db.LongText
+  createdAt DateTime @default(now())
+
+  @@map("copywriting_records")
+}
+
+// ============================================================
+// 10. AI 人事 (Boss直聘)
+// ============================================================
+
+model BossAccount {
+  id        Int      @id @default(autoincrement())
+  username  String   @db.VarChar(100)
+  cookie    String?  @db.Text
+  status    Int      @default(1) // 0=离线 1=在线
+  lastActiveAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  candidates BossCandidate[]
+  messages   BossMessage[]
+  tasks      BossTask[]
+
+  @@map("boss_accounts")
+}
+
+model BossCandidate {
+  id          Int      @id @default(autoincrement())
+  accountId   Int
+  account     BossAccount @relation(fields: [accountId], references: [id])
+  name        String   @db.VarChar(100)
+  position    String?  @db.VarChar(200)
+  company     String?  @db.VarChar(200)
+  experience  String?  @db.VarChar(100)
+  education   String?  @db.VarChar(100)
+  age         Int?
+  gender      String?  @db.VarChar(10)
+  city        String?  @db.VarChar(50)
+  avatar      String?  @db.VarChar(500)
+  geekCard    String?  @db.Text // 牛人卡片原始数据
+  status      String   @default("new") @db.VarChar(20) // new|contacted|replied|interviewed|passed|rejected
+  tags        Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messages   BossMessage[]
+
+  @@index([accountId])
+  @@map("boss_candidates")
+}
+
+model BossMessage {
+  id          Int      @id @default(autoincrement())
+  accountId   Int
+  account     BossAccount @relation(fields: [accountId], references: [id])
+  candidateId Int
+  candidate   BossCandidate @relation(fields: [candidateId], references: [id])
+  direction   String   @db.VarChar(10) // in|out
+  content     String   @db.LongText
+  type        String   @default("text") @db.VarChar(20)
+  createdBy   String   @default("ai") @db.VarChar(20)
+  createdAt   DateTime @default(now())
+
+  @@index([candidateId])
+  @@map("boss_messages")
+}
+
+model BossTask {
+  id          Int      @id @default(autoincrement())
+  accountId   Int
+  account     BossAccount @relation(fields: [accountId], references: [id])
+  type        String   @db.VarChar(30) // auto_greet|auto_reply|recommend
+  name        String   @db.VarChar(200)
+  target      Json?    // 目标条件
+  content     String   @db.LongText
+  status      String   @default("active") @db.VarChar(20)
+  total       Int      @default(0)
+  executed    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("boss_tasks")
+}
+
+// ============================================================
+// 11. AI 法务
+// ============================================================
+
+model LegalConsultation {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  question  String   @db.Text
+  answer    String?  @db.LongText
+  category  String?  @db.VarChar(50) // 合同|劳动|知识产权|公司|债权
+  status    String   @default("pending") @db.VarChar(20) // pending|answered
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("legal_consultations")
+}
+
+model LegalCase {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(500)
+  caseNumber  String?  @db.VarChar(100)
+  court       String?  @db.VarChar(200)
+  date        DateTime?
+  parties     Json?    // 当事人信息
+  content     String   @db.LongText
+  summary     String?  @db.Text
+  type        String?  @db.VarChar(50) // 民事|刑事|行政
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("legal_cases")
+}
+
+model Contract {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  title       String   @db.VarChar(500)
+  content     String   @db.LongText
+  analysis    String?  @db.LongText // AI审查结果
+  riskLevel   String?  @db.VarChar(20) // low|medium|high
+  risks       Json?    // 风险点列表
+  suggestions String?  @db.Text // 修改建议
+  status      String   @default("pending") @db.VarChar(20) // pending|analyzed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@map("contracts")
+}
+
+// ============================================================
+// 12. AI 拓客
+// ============================================================
+
+model CustomerAcquisition {
+  id          Int      @id @default(autoincrement())
+  keyword     String?  @db.VarChar(200)
+  industry    String?  @db.VarChar(100)
+  city        String?  @db.VarChar(50)
+  source      String   @db.VarChar(50) // map|search|api
+  name        String   @db.VarChar(200)
+  phone       String?  @db.VarChar(20)
+  address     String?  @db.VarChar(500)
+  latitude    Float?
+  longitude   Float?
+  info        Json?    // 企业详细信息
+  tags        Json?
+  status      String   @default("new") @db.VarChar(20) // new|contacted|converted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([city])
+  @@map("customer_acquisitions")
+}
+
+// ============================================================
+// 13. 培训内容
+// ============================================================
+
+model TrainingCourse {
+  id        Int      @id @default(autoincrement())
+  title     String   @db.VarChar(500)
+  content   String   @db.LongText
+  videoUrl  String?  @db.VarChar(500)
+  coverUrl  String?  @db.VarChar(500)
+  category  String   @default("basic") @db.VarChar(50) // basic|advanced|tutorial|faq
+  sort      Int      @default(0)
+  duration  Int?     // 视频时长(秒)
+  views     Int      @default(0)
+  status    Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("training_courses")
+}
+
+// ============================================================
+// 14. 更新记录
+// ============================================================
+
+model UpdateLog {
+  id        Int      @id @default(autoincrement())
+  version   String   @db.VarChar(20)
+  title     String   @db.VarChar(500)
+  content   String   @db.LongText
+  type      String   @default("feature") @db.VarChar(20) // feature|fix|security|notice
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("update_logs")
+}
+
+// ============================================================
+// 15. AI个微 (个人微信)
+// ============================================================
+
+model WxDevice {
+  id           Int       @id @default(autoincrement())
+  deviceId     String    @unique @db.VarChar(100)
+  name         String?   @db.VarChar(100)
+  wxId         String?   @db.VarChar(100)
+  nickname     String?   @db.VarChar(100)
+  avatar       String?   @db.VarChar(500)
+  status       Int       @default(0) // 0=离线 1=在线
+  lastActiveAt DateTime?
+  info         Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  friends      WxFriend[]
+  sessions     WxSession[]
+  moments      WxMoment[]
+
+  @@map("wx_devices")
+}
+
+model WxFriend {
+  id        Int      @id @default(autoincrement())
+  deviceId  Int
+  device    WxDevice @relation(fields: [deviceId], references: [id])
+  wxId      String   @db.VarChar(100) // 微信号
+  nickname  String?  @db.VarChar(100)
+  avatar    String?  @db.VarChar(500)
+  remark    String?  @db.VarChar(200) // 备注
+  tags      Json?    // 标签
+  labels    Json?    // 自定义标签
+  source    String?  @db.VarChar(100)
+  status    Int      @default(1)
+  friendAt  DateTime?
+  lastChatAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions  WxSession[]
+  messages  WxMessage[]
+
+  @@index([deviceId])
+  @@map("wx_friends")
+}
+
+model WxSession {
+  id            Int      @id @default(autoincrement())
+  friendId      Int
+  friend        WxFriend @relation(fields: [friendId], references: [id])
+  deviceId      Int?
+  device        WxDevice? @relation(fields: [deviceId], references: [id])
+  unreadCount   Int      @default(0)
+  lastMessage   String?  @db.VarChar(500)
+  lastMessageAt DateTime?
+  pinned        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  messages      WxMessage[]
+
+  @@map("wx_sessions")
+}
+
+model WxMessage {
+  id        Int      @id @default(autoincrement())
+  sessionId Int
+  session   WxSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  friendId  Int
+  friend    WxFriend  @relation(fields: [friendId], references: [id])
+  direction String   @default("in") @db.VarChar(10)
+  type      String   @db.VarChar(20) // text|image|file|link|video|voice|emoji|miniprogram
+  content   String   @db.LongText
+  extra     Json?
+  isRead    Boolean  @default(false)
+  createdBy String   @default("ai") @db.VarChar(20)
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([friendId])
+  @@map("wx_messages")
+}
+
+model WxMoment {
+  id        Int      @id @default(autoincrement())
+  deviceId  Int
+  device    WxDevice @relation(fields: [deviceId], references: [id])
+  content   String   @db.LongText
+  images    Json?    // 图片URL列表
+  videoUrl  String?  @db.VarChar(500)
+  likes     Int      @default(0)
+  comments  Json?    // 评论列表
+  publishedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("wx_moments")
+}
+
+model WxKeyword {
+  id          Int      @id @default(autoincrement())
+  keyword     String   @db.VarChar(200)
+  replyType   String   @default("text") @db.VarChar(20)
+  replyContent String  @db.Text
+  matchType   String   @default("exact") @db.VarChar(20)
+  priority    Int      @default(0)
+  status      Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wx_keywords")
+}
+
+model WxBulkTask {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(200)
+  targetType  String   @db.VarChar(20)
+  target      Json?
+  contentType String   @default("text") @db.VarChar(20)
+  content     String   @db.LongText
+  status      String   @default("pending") @db.VarChar(20)
+  total       Int      @default(0)
+  sent        Int      @default(0)
+  failed      Int      @default(0)
+  scheduledAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wx_bulk_tasks")
+}
+
+model WxSopTask {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(200)
+  steps       Json
+  targetType  String   @db.VarChar(20)
+  target      Json?
+  trigger     String   @default("add_friend") @db.VarChar(30)
+  status      String   @default("active") @db.VarChar(20)
+  total       Int      @default(0)
+  executed    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wx_sop_tasks")
+}
+
+model WxAutoInteraction {
+  id          Int      @id @default(autoincrement())
+  type        String   @db.VarChar(20) // like|comment|like_comment
+  targetType  String   @db.VarChar(20)
+  target      Json?
+  commentTemplates Json?
+  likeProbability Float @default(0.3)
+  commentProbability Float @default(0.2)
+  delayMin    Int      @default(5)
+  delayMax    Int      @default(30)
+  status      String   @default("active") @db.VarChar(20)
+  total       Int      @default(0)
+  executed    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wx_auto_interactions")
+}
+
+model WxFriendTask {
+  id          Int      @id @default(autoincrement())
+  type        String   @db.VarChar(30) // auto_greet|auto_add|auto_reply
+  name        String   @db.VarChar(200)
+  target      Json?
+  content     String   @db.LongText
+  condition   Json?
+  status      String   @default("active") @db.VarChar(20)
+  total       Int      @default(0)
+  executed    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wx_friend_tasks")
+}

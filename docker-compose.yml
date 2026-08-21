@@ -1,0 +1,103 @@
+# AI超级员工系统 - 开发版
+# 基于已安装客户端源码逆向分析，重新开发
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: se-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-SuperEmployee@2026}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-super_employee}
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./packages/server/prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    networks:
+      - se-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: se-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-SuperEmployee@2026}
+    networks:
+      - se-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: se-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-SuperEmployee@2026}
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - se-network
+
+  server:
+    build:
+      context: ./packages/server
+      dockerfile: Dockerfile
+    container_name: se-server
+    restart: unless-stopped
+    depends_on:
+      - mysql
+      - redis
+      - minio
+      - video-api
+    environment:
+      DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD:-SuperEmployee@2026}@mysql:3306/super_employee
+      REDIS_URL: redis://:${REDIS_PASSWORD:-SuperEmployee@2026}@redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-SuperEmployee@2026}
+      JWT_SECRET: ${JWT_SECRET:-super-employee-jwt-secret-2026}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      COZE_API_TOKEN: ${COZE_API_TOKEN:-}
+      VIDEO_API_URL: ${VIDEO_API_URL:-http://video-api:8080}
+      # ... all other keys from .env
+    ports:
+      - "3000:3000"
+    networks:
+      - se-network
+
+  # ===== AI 短视频生成（MoneyPrinterTurbo API 模式）=====
+  video-api:
+    build:
+      context: ./services/video-generator
+      dockerfile: Dockerfile
+    container_name: se-video-api
+    restart: unless-stopped
+    # 覆盖镜像默认的 streamlit 启动命令，以 FastAPI 模式运行
+    command: ["python3", "main.py"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./services/video-generator/config.toml:/MoneyPrinterTurbo/config.toml
+      - video-storage:/MoneyPrinterTurbo/storage
+    networks:
+      - se-network
+
+volumes:
+  mysql-data:
+  redis-data:
+  minio-data:
+  video-storage:
+
+networks:
+  se-network:
+    driver: bridge

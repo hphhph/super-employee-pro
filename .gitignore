@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+*.local
+.DS_Store
+Thumbs.db
+*.log
+prisma/migrations/
+
+# MoneyPrinterTurbo 运行时产物（含 API Key，勿提交）
+services/video-generator/config.toml
+services/video-generator/storage/
+services/video-generator/**/__pycache__/
+services/video-generator/.venv/

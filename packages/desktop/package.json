@@ -1,0 +1,34 @@
+{
+  "name": "@se/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "concurrently \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "build": "vue-tsc --noEmit && vite build",
+    "build:electron": "vite build && electron-builder",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.6.7",
+    "dayjs": "^1.11.10",
+    "echarts": "^5.5.0",
+    "element-plus": "^2.6.0",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.15",
+    "vue-router": "^4.2.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.3",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^28.2.0",
+    "electron-builder": "^24.13.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.1.0",
+    "vue-tsc": "^2.2.12",
+    "wait-on": "^7.2.0"
+  }
+}

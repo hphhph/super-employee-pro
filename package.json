@@ -1,0 +1,29 @@
+{
+  "name": "super-employee-pro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI超级员工系统 - 重新开发版",
+  "scripts": {
+    "dev:server": "pnpm --filter @se/server dev",
+    "dev:desktop": "pnpm --filter @se/desktop dev",
+    "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:desktop\"",
+    "build:server": "pnpm --filter @se/server build",
+    "build:desktop": "pnpm --filter @se/desktop build",
+    "build": "pnpm build:server && pnpm build:desktop",
+    "db:generate": "pnpm --filter @se/server prisma:generate",
+    "db:push": "pnpm --filter @se/server prisma:push",
+    "db:migrate": "pnpm --filter @se/server prisma:migrate",
+    "db:seed": "pnpm --filter @se/server prisma:seed",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "setup": "pnpm install && cp -n .env.example .env && pnpm db:push && pnpm db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
