@@ -7,7 +7,9 @@ export class KnowledgeService {
 
   // ===== 知识库 =====
   async findBases(params: { page?: number; pageSize?: number; keyword?: string }) {
-    const { page = 1, pageSize = 20, keyword } = params;
+    const page = Number(params.page) || 1;
+    const pageSize = Number(params.pageSize) || 20;
+    const keyword = params.keyword;
     const where = keyword ? { name: { contains: keyword } } : {};
     const [total, list] = await Promise.all([
       this.prisma.knowledgeBase.count({ where }),
@@ -36,7 +38,8 @@ export class KnowledgeService {
 
   // ===== 知识文档 =====
   async findDocuments(baseId: number, params: { page?: number; pageSize?: number }) {
-    const { page = 1, pageSize = 20 } = params;
+    const page = Number(params.page) || 1;
+    const pageSize = Number(params.pageSize) || 20;
     const [total, list] = await Promise.all([
       this.prisma.knowledgeDocument.count({ where: { knowledgeBaseId: baseId } }),
       this.prisma.knowledgeDocument.findMany({
@@ -71,7 +74,9 @@ export class KnowledgeService {
 
   // ===== 智能体 =====
   async findAgents(params: { page?: number; pageSize?: number; keyword?: string }) {
-    const { page = 1, pageSize = 20, keyword } = params;
+    const page = Number(params.page) || 1;
+    const pageSize = Number(params.pageSize) || 20;
+    const keyword = params.keyword;
     const where = keyword ? { name: { contains: keyword } } : {};
     const [total, list] = await Promise.all([
       this.prisma.aiAgent.count({ where }),
