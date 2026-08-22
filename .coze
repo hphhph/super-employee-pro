@@ -8,5 +8,5 @@ build = ["sh", "-c", "ELECTRON_SKIP_BINARY_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1 
 run = ["sh", "-c", "bash /workspace/projects/start.sh"]
 
 [deploy]
-build = ["sh", "-c", "ELECTRON_SKIP_BINARY_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1 pnpm install --ignore-scripts && cd packages/server && pnpm prisma generate && ./node_modules/.bin/nest build && cd ../desktop && npx vite build"]
+build = ["sh", "-c", "ELECTRON_SKIP_BINARY_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1 pnpm install --ignore-scripts && cd packages/server && pnpm prisma:generate && ./node_modules/.bin/nest build && cd ../desktop && npx vite build"]
 run = ["sh", "-c", "bash /workspace/projects/start.sh"]
